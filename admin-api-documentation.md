@@ -1,6 +1,6 @@
 # Documentation API JUNA — Panel Admin
 
-## Base URL
+## Base URL - local comme prod
 
 **Production :**
 ```
