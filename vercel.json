@@ -1,5 +1,5 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs",
-  "rootDirectory": "juna-admin-panel"
+  "buildCommand": "cd juna-admin-panel && pnpm run build",
+  "installCommand": "cd juna-admin-panel && pnpm install",
+  "outputDirectory": "juna-admin-panel/.next"
 }
