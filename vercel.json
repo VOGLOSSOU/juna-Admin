@@ -1,5 +1,0 @@
-{
-  "buildCommand": "cd juna-admin-panel && pnpm run build",
-  "installCommand": "cd juna-admin-panel && pnpm install",
-  "outputDirectory": "juna-admin-panel/.next"
-}
