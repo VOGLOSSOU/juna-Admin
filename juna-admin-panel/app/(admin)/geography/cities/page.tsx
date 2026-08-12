@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
-import { Plus, Loader2, X } from "lucide-react";
+import { Plus, Loader2, X, Ban, AlertTriangle } from "lucide-react";
 
 interface Country { id: string; code: string; translations: { fr: string; en: string }; }
 interface City { id: string; name: string; countryId: string; isActive: boolean; }
@@ -17,6 +17,12 @@ export default function CitiesPage() {
   const [form, setForm] = useState({ countryId: "", name: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const [confirmCity, setConfirmCity] = useState<CityWithCountry | null>(null);
+  const [checkingProviders, setCheckingProviders] = useState(false);
+  const [activeProviderCount, setActiveProviderCount] = useState(0);
+  const [disabling, setDisabling] = useState(false);
+  const [disableError, setDisableError] = useState("");
 
   const fetchData = async () => {
     setLoading(true);
@@ -67,6 +73,37 @@ export default function CitiesPage() {
     }
   };
 
+  const openDisableConfirm = async (city: CityWithCountry) => {
+    setConfirmCity(city);
+    setDisableError("");
+    setActiveProviderCount(0);
+    setCheckingProviders(true);
+    try {
+      const { data } = await api.get("/admin/providers", { params: { status: "APPROVED" } });
+      const providers: Array<{ city?: { id: string } }> = data.data ?? [];
+      setActiveProviderCount(providers.filter(p => p.city?.id === city.id).length);
+    } catch {
+      // le compte de prestataires est juste informatif, on n'empêche pas la désactivation si l'appel échoue
+    } finally {
+      setCheckingProviders(false);
+    }
+  };
+
+  const handleDisable = async () => {
+    if (!confirmCity) return;
+    setDisableError("");
+    setDisabling(true);
+    try {
+      await api.delete(`/admin/cities/${confirmCity.id}`);
+      setConfirmCity(null);
+      fetchData();
+    } catch (err: unknown) {
+      setDisableError((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Erreur lors de la désactivation.");
+    } finally {
+      setDisabling(false);
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -91,13 +128,14 @@ export default function CitiesPage() {
               <th className="text-left text-[14px] font-semibold text-[#1A1A1A] px-5 py-3">Nom</th>
               <th className="text-left text-[14px] font-semibold text-[#1A1A1A] px-5 py-3">Pays</th>
               <th className="text-left text-[14px] font-semibold text-[#1A1A1A] px-5 py-3">Statut</th>
+              <th className="text-left text-[14px] font-semibold text-[#1A1A1A] px-5 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={3} className="px-5 py-10 text-center"><Loader2 size={20} className="animate-spin mx-auto text-[#6B6B6B]" /></td></tr>
+              <tr><td colSpan={4} className="px-5 py-10 text-center"><Loader2 size={20} className="animate-spin mx-auto text-[#6B6B6B]" /></td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={3} className="px-5 py-10 text-center text-[13px] text-[#6B6B6B]">Aucune ville trouvée.</td></tr>
+              <tr><td colSpan={4} className="px-5 py-10 text-center text-[13px] text-[#6B6B6B]">Aucune ville trouvée.</td></tr>
             ) : (
               filtered.map(c => (
                 <tr key={c.id} className="border-b border-[#E5E5E5] last:border-0 hover:bg-[#F7F7F7] transition-colors">
@@ -107,6 +145,16 @@ export default function CitiesPage() {
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[12px] font-semibold ${c.isActive ? "bg-[#EEF5F0] text-[#1A5C2A]" : "bg-gray-100 text-gray-500"}`}>
                       {c.isActive ? "Actif" : "Inactif"}
                     </span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    {c.isActive ? (
+                      <button onClick={() => openDisableConfirm(c)}
+                        className="flex items-center gap-1.5 text-[13px] font-semibold text-[#F4521E] hover:text-[#C43D12] transition-colors">
+                        <Ban size={14} />Désactiver
+                      </button>
+                    ) : (
+                      <span className="text-[13px] text-[#B5B5B5]">—</span>
+                    )}
                   </td>
                 </tr>
               ))
@@ -145,6 +193,42 @@ export default function CitiesPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {confirmCity && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-[18px] font-semibold text-[#1A1A1A]">Désactiver {confirmCity.name} ?</h2>
+              <button onClick={() => setConfirmCity(null)} className="text-[#6B6B6B] hover:text-[#1A1A1A]"><X size={20} /></button>
+            </div>
+
+            <p className="text-[14px] text-[#6B6B6B] mb-3">
+              La ville ne sera plus visible ni utilisable, mais elle reste en base avec toutes ses relations (prestataires, landmarks). Il n&apos;existe pour l&apos;instant aucune route pour réactiver une ville — impossible de revenir en arrière depuis l&apos;admin.
+            </p>
+
+            {checkingProviders ? (
+              <div className="flex items-center gap-2 text-[13px] text-[#6B6B6B] mb-3">
+                <Loader2 size={14} className="animate-spin" />Vérification des prestataires rattachés…
+              </div>
+            ) : activeProviderCount > 0 ? (
+              <div className="flex items-start gap-2 text-[13px] text-[#F4521E] bg-[#FFF5F2] border border-[#F4521E]/20 rounded-lg px-3 py-2 mb-3">
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                <span>{activeProviderCount} prestataire{activeProviderCount > 1 ? "s" : ""} actif{activeProviderCount > 1 ? "s" : ""} {activeProviderCount > 1 ? "sont rattachés" : "est rattaché"} à cette ville et deviendra{activeProviderCount > 1 ? "nt" : ""} invisible{activeProviderCount > 1 ? "s" : ""}.</span>
+              </div>
+            ) : null}
+
+            {disableError && <p className="text-[13px] text-[#F4521E] bg-[#FFF5F2] border border-[#F4521E]/20 rounded-lg px-3 py-2 mb-3">{disableError}</p>}
+
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={() => setConfirmCity(null)} className="flex-1 h-10 border border-[#E5E5E5] rounded-lg text-[14px] font-semibold text-[#6B6B6B] hover:bg-[#F7F7F7] transition-colors">Annuler</button>
+              <button type="button" onClick={handleDisable} disabled={disabling}
+                className="flex-1 h-10 bg-[#F4521E] hover:bg-[#C43D12] text-white rounded-lg text-[14px] font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors">
+                {disabling && <Loader2 size={14} className="animate-spin" />}Désactiver
+              </button>
+            </div>
           </div>
         </div>
       )}
