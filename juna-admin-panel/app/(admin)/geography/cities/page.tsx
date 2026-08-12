@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
-import { Plus, Loader2, X, Ban, AlertTriangle } from "lucide-react";
+import { Plus, Loader2, X, Ban, CheckCircle2, AlertTriangle } from "lucide-react";
 
 interface Country { id: string; code: string; translations: { fr: string; en: string }; }
 interface City { id: string; name: string; countryId: string; isActive: boolean; }
@@ -21,8 +21,8 @@ export default function CitiesPage() {
   const [confirmCity, setConfirmCity] = useState<CityWithCountry | null>(null);
   const [checkingProviders, setCheckingProviders] = useState(false);
   const [activeProviderCount, setActiveProviderCount] = useState(0);
-  const [disabling, setDisabling] = useState(false);
-  const [disableError, setDisableError] = useState("");
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [statusError, setStatusError] = useState("");
 
   const fetchData = async () => {
     setLoading(true);
@@ -73,34 +73,38 @@ export default function CitiesPage() {
     }
   };
 
-  const openDisableConfirm = async (city: CityWithCountry) => {
+  const openStatusConfirm = async (city: CityWithCountry) => {
     setConfirmCity(city);
-    setDisableError("");
+    setStatusError("");
     setActiveProviderCount(0);
-    setCheckingProviders(true);
-    try {
-      const { data } = await api.get("/admin/providers", { params: { status: "APPROVED" } });
-      const providers: Array<{ city?: { id: string } }> = data.data ?? [];
-      setActiveProviderCount(providers.filter(p => p.city?.id === city.id).length);
-    } catch {
-      // le compte de prestataires est juste informatif, on n'empêche pas la désactivation si l'appel échoue
-    } finally {
-      setCheckingProviders(false);
+
+    if (city.isActive) {
+      setCheckingProviders(true);
+      try {
+        const { data } = await api.get("/admin/providers", { params: { status: "APPROVED" } });
+        const providers: Array<{ city?: { id: string } }> = data.data ?? [];
+        setActiveProviderCount(providers.filter(p => p.city?.id === city.id).length);
+      } catch {
+        // le compte de prestataires est juste informatif, on n'empêche pas la désactivation si l'appel échoue
+      } finally {
+        setCheckingProviders(false);
+      }
     }
   };
 
-  const handleDisable = async () => {
+  const handleToggleStatus = async () => {
     if (!confirmCity) return;
-    setDisableError("");
-    setDisabling(true);
+    const targetActive = !confirmCity.isActive;
+    setStatusError("");
+    setUpdatingStatus(true);
     try {
-      await api.delete(`/admin/cities/${confirmCity.id}`);
+      await api.patch(`/admin/cities/${confirmCity.id}/status`, { isActive: targetActive });
       setConfirmCity(null);
       fetchData();
     } catch (err: unknown) {
-      setDisableError((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Erreur lors de la désactivation.");
+      setStatusError((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Erreur lors de la mise à jour du statut.");
     } finally {
-      setDisabling(false);
+      setUpdatingStatus(false);
     }
   };
 
@@ -148,12 +152,15 @@ export default function CitiesPage() {
                   </td>
                   <td className="px-5 py-3.5">
                     {c.isActive ? (
-                      <button onClick={() => openDisableConfirm(c)}
+                      <button onClick={() => openStatusConfirm(c)}
                         className="flex items-center gap-1.5 text-[13px] font-semibold text-[#F4521E] hover:text-[#C43D12] transition-colors">
                         <Ban size={14} />Désactiver
                       </button>
                     ) : (
-                      <span className="text-[13px] text-[#B5B5B5]">—</span>
+                      <button onClick={() => openStatusConfirm(c)}
+                        className="flex items-center gap-1.5 text-[13px] font-semibold text-[#1A5C2A] hover:text-[#0F3D1A] transition-colors">
+                        <CheckCircle2 size={14} />Activer
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -197,41 +204,47 @@ export default function CitiesPage() {
         </div>
       )}
 
-      {confirmCity && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-[18px] font-semibold text-[#1A1A1A]">Désactiver {confirmCity.name} ?</h2>
-              <button onClick={() => setConfirmCity(null)} className="text-[#6B6B6B] hover:text-[#1A1A1A]"><X size={20} /></button>
-            </div>
-
-            <p className="text-[14px] text-[#6B6B6B] mb-3">
-              La ville ne sera plus visible ni utilisable, mais elle reste en base avec toutes ses relations (prestataires, landmarks). Il n&apos;existe pour l&apos;instant aucune route pour réactiver une ville — impossible de revenir en arrière depuis l&apos;admin.
-            </p>
-
-            {checkingProviders ? (
-              <div className="flex items-center gap-2 text-[13px] text-[#6B6B6B] mb-3">
-                <Loader2 size={14} className="animate-spin" />Vérification des prestataires rattachés…
+      {confirmCity && (() => {
+        const isDeactivating = confirmCity.isActive;
+        const actionLabel = isDeactivating ? "Désactiver" : "Activer";
+        return (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-[18px] font-semibold text-[#1A1A1A]">{actionLabel} {confirmCity.name} ?</h2>
+                <button onClick={() => setConfirmCity(null)} className="text-[#6B6B6B] hover:text-[#1A1A1A]"><X size={20} /></button>
               </div>
-            ) : activeProviderCount > 0 ? (
-              <div className="flex items-start gap-2 text-[13px] text-[#F4521E] bg-[#FFF5F2] border border-[#F4521E]/20 rounded-lg px-3 py-2 mb-3">
-                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-                <span>{activeProviderCount} prestataire{activeProviderCount > 1 ? "s" : ""} actif{activeProviderCount > 1 ? "s" : ""} {activeProviderCount > 1 ? "sont rattachés" : "est rattaché"} à cette ville et deviendra{activeProviderCount > 1 ? "nt" : ""} invisible{activeProviderCount > 1 ? "s" : ""}.</span>
+
+              <p className="text-[14px] text-[#6B6B6B] mb-3">
+                {isDeactivating
+                  ? "La ville ne sera plus visible ni utilisable, mais elle reste en base avec toutes ses relations (prestataires, landmarks). Tu pourras la réactiver à tout moment depuis cette page."
+                  : "La ville redeviendra visible et utilisable normalement."}
+              </p>
+
+              {isDeactivating && (checkingProviders ? (
+                <div className="flex items-center gap-2 text-[13px] text-[#6B6B6B] mb-3">
+                  <Loader2 size={14} className="animate-spin" />Vérification des prestataires rattachés…
+                </div>
+              ) : activeProviderCount > 0 ? (
+                <div className="flex items-start gap-2 text-[13px] text-[#F4521E] bg-[#FFF5F2] border border-[#F4521E]/20 rounded-lg px-3 py-2 mb-3">
+                  <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                  <span>{activeProviderCount} prestataire{activeProviderCount > 1 ? "s" : ""} actif{activeProviderCount > 1 ? "s" : ""} {activeProviderCount > 1 ? "sont rattachés" : "est rattaché"} à cette ville et deviendra{activeProviderCount > 1 ? "nt" : ""} invisible{activeProviderCount > 1 ? "s" : ""}.</span>
+                </div>
+              ) : null)}
+
+              {statusError && <p className="text-[13px] text-[#F4521E] bg-[#FFF5F2] border border-[#F4521E]/20 rounded-lg px-3 py-2 mb-3">{statusError}</p>}
+
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setConfirmCity(null)} className="flex-1 h-10 border border-[#E5E5E5] rounded-lg text-[14px] font-semibold text-[#6B6B6B] hover:bg-[#F7F7F7] transition-colors">Annuler</button>
+                <button type="button" onClick={handleToggleStatus} disabled={updatingStatus}
+                  className={`flex-1 h-10 text-white rounded-lg text-[14px] font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors ${isDeactivating ? "bg-[#F4521E] hover:bg-[#C43D12]" : "bg-[#1A5C2A] hover:bg-[#0F3D1A]"}`}>
+                  {updatingStatus && <Loader2 size={14} className="animate-spin" />}{actionLabel}
+                </button>
               </div>
-            ) : null}
-
-            {disableError && <p className="text-[13px] text-[#F4521E] bg-[#FFF5F2] border border-[#F4521E]/20 rounded-lg px-3 py-2 mb-3">{disableError}</p>}
-
-            <div className="flex gap-3 pt-1">
-              <button type="button" onClick={() => setConfirmCity(null)} className="flex-1 h-10 border border-[#E5E5E5] rounded-lg text-[14px] font-semibold text-[#6B6B6B] hover:bg-[#F7F7F7] transition-colors">Annuler</button>
-              <button type="button" onClick={handleDisable} disabled={disabling}
-                className="flex-1 h-10 bg-[#F4521E] hover:bg-[#C43D12] text-white rounded-lg text-[14px] font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors">
-                {disabling && <Loader2 size={14} className="animate-spin" />}Désactiver
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
