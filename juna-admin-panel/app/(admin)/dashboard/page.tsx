@@ -85,14 +85,14 @@ export default function DashboardPage() {
             },
             {
               label: "Volume total des paiements",
-              value: `${overview.totalPaymentsVolume.toLocaleString("fr-FR")} FCFA`,
+              value: `${(overview.totalPaymentsVolume ?? 0).toLocaleString("fr-FR")} FCFA`,
               icon: <TrendingUp size={20} />,
               color: "text-[#F4521E]",
               bg: "bg-[#FFF5F2]",
             },
             {
               label: "Revenu Juna",
-              value: `${overview.junaRevenue.toLocaleString("fr-FR")} FCFA`,
+              value: `${(overview.junaRevenue ?? 0).toLocaleString("fr-FR")} FCFA`,
               icon: <Wallet size={20} />,
               color: "text-[#1A5C2A]",
               bg: "bg-[#EEF5F0]",
@@ -141,7 +141,7 @@ export default function DashboardPage() {
               { label: "Nouveaux utilisateurs", value: periodStats.newUsers, color: "text-[#1A5C2A]" },
               { label: "Nouveaux fournisseurs", value: periodStats.newProviders, color: "text-[#1A5C2A]" },
               { label: "Nouvelles commandes", value: periodStats.newOrders, color: "text-[#1A5C2A]" },
-              { label: "Revenus", value: `${periodStats.revenue.toLocaleString("fr-FR")} FCFA`, color: "text-[#F4521E]" },
+              { label: "Revenus", value: `${(periodStats.revenue ?? 0).toLocaleString("fr-FR")} FCFA`, color: "text-[#F4521E]" },
             ].map(stat => (
               <div key={stat.label} className="bg-[#F7F7F7] rounded-xl p-4">
                 <p className="text-[12px] text-[#6B6B6B] mb-1">{stat.label}</p>
