@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
-import { Store, Users, Package, ClipboardList, Clock, CheckCircle, TrendingUp } from "lucide-react";
+import { Store, Users, Package, ClipboardList, Clock, CheckCircle, TrendingUp, Wallet } from "lucide-react";
 
 interface Overview {
   totalUsers: number;
@@ -11,7 +11,8 @@ interface Overview {
   totalOrders: number;
   completedOrders: number;
   pendingOrders: number;
-  totalRevenue: number;
+  totalPaymentsVolume: number;
+  junaRevenue: number;
 }
 
 interface PeriodStats {
@@ -62,7 +63,7 @@ export default function DashboardPage() {
       {/* KPIs globaux */}
       {loading ? (
         <div className="grid grid-cols-3 gap-4 mb-8">
-          {Array.from({ length: 8 }).map((_, i) => (
+          {Array.from({ length: 9 }).map((_, i) => (
             <div key={i} className="bg-white rounded-xl border border-[#E5E5E5] p-5 h-24 animate-pulse" />
           ))}
         </div>
@@ -83,11 +84,18 @@ export default function DashboardPage() {
               bg: "bg-[#EEF5F0]",
             },
             {
-              label: "Revenus totaux",
-              value: `${overview.totalRevenue.toLocaleString("fr-FR")} FCFA`,
+              label: "Volume total des paiements",
+              value: `${overview.totalPaymentsVolume.toLocaleString("fr-FR")} FCFA`,
               icon: <TrendingUp size={20} />,
               color: "text-[#F4521E]",
               bg: "bg-[#FFF5F2]",
+            },
+            {
+              label: "Revenu Juna",
+              value: `${overview.junaRevenue.toLocaleString("fr-FR")} FCFA`,
+              icon: <Wallet size={20} />,
+              color: "text-[#1A5C2A]",
+              bg: "bg-[#EEF5F0]",
             },
           ].map((card) => (
             <div
