@@ -1,7 +1,8 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import api from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 import { Loader2, ChevronLeft, ChevronRight, CheckCircle2, Send, AlertTriangle } from "lucide-react";
 
 interface PayoutInfo {
@@ -67,6 +68,7 @@ function formatMode(mode: string | null): string {
 }
 
 export default function PayoutsPage() {
+  const { admin } = useAuth();
   const [rows, setRows] = useState<PayoutRow[]>([]);
   const [needsActionOnly, setNeedsActionOnly] = useState(true);
   const [page, setPage] = useState(1);
@@ -79,63 +81,103 @@ export default function PayoutsPage() {
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ orderId: string; message: string } | null>(null);
 
-  function load() {
-    setLoading(true);
-    setError(false);
-    api
-      .get("/admin/payouts", { params: { page, limit: LIMIT, needsAction: needsActionOnly || undefined } })
-      .then(({ data }) => {
-        const payload = data.data;
-        setRows(payload.items ?? []);
-        setTotal(payload.total ?? 0);
-        setTotalPages(payload.totalPages ?? 1);
-      })
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
-  }
+  const mounted = useRef(true);
+  const request = useRef(0);
+  const action = useRef<string | null>(null);
+  const scope = `${admin?.id ?? 'guest'}:${page}:${needsActionOnly}`;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+
+  const invalidate = useCallback(() => { request.current++; }, []);
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, needsActionOnly]);
+    mounted.current = true;
+    return () => { mounted.current = false; invalidate(); };
+  }, [invalidate]);
+
+  const load = useCallback(async () => {
+    if (!admin) return;
+    const version = ++request.current;
+    const currentScope = `${admin.id}:${page}:${needsActionOnly}`;
+    const current = () => mounted.current && request.current === version && scopeRef.current === currentScope;
+    setLoading(true);
+    setError(false);
+    try {
+      const { data } = await api.get("/admin/payouts", {
+        params: { page, limit: LIMIT, needsAction: needsActionOnly ? "true" : undefined },
+      });
+      if (!current()) return;
+      const payload = data.data;
+      if (page > payload.totalPages) { setPage(Math.max(1, payload.totalPages)); return; }
+      setRows(payload.items ?? []);
+      setTotal(payload.total ?? 0);
+      setTotalPages(payload.totalPages ?? 1);
+    } catch {
+      if (current()) setError(true);
+    } finally {
+      if (current()) setLoading(false);
+    }
+  }, [admin, page, needsActionOnly]);
+
+  useEffect(() => {
+    setRows([]);
+    setTotal(0);
+    setActionOrderId(null);
+    setRowError(null);
+    void load();
+    return () => { invalidate(); };
+  }, [load, invalidate]);
 
   function openManualForm(row: PayoutRow) {
+    if (action.current) return;
     setRowError(null);
     setActionOrderId(row.orderId);
     setManualAmount(String(row.providerAmount));
   }
 
   async function confirmManual(orderId: string) {
+    if (action.current || !admin) return;
+    const raw = manualAmount.trim();
+    const amount = Number(raw);
+    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(amount) || amount <= 0) {
+      setRowError({ orderId, message: "Saisissez un montant entier strictement positif en FCFA." });
+      return;
+    }
+    action.current = orderId;
+    const currentScope = scopeRef.current;
     setBusyOrderId(orderId);
     setRowError(null);
     try {
-      const amount = manualAmount ? Number(manualAmount) : undefined;
-      await api.post(`/admin/payouts/${orderId}/confirm-manual`, amount ? { amount } : {});
-      setActionOrderId(null);
-      load();
+      await api.post(`/admin/payouts/${orderId}/confirm-manual`, { amount });
+      if (mounted.current && scopeRef.current === currentScope) {
+        setActionOrderId(null);
+        await load();
+      }
     } catch (err: unknown) {
       const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Erreur lors de la confirmation.";
-      setRowError({ orderId, message });
+      if (mounted.current && scopeRef.current === currentScope) setRowError({ orderId, message });
     } finally {
-      setBusyOrderId(null);
+      action.current = null;
+      if (mounted.current) setBusyOrderId(null);
     }
   }
 
   async function triggerPayout(row: PayoutRow) {
-    const confirmed = window.confirm(
-      `Envoyer réellement ${row.providerAmount.toLocaleString("fr-FR")} FCFA à ${row.providerName} maintenant ?`
-    );
-    if (!confirmed) return;
+    if (action.current || !admin || !row.payout.canTrigger) return;
+    if (!window.confirm(`Envoyer réellement ${row.providerAmount.toLocaleString("fr-FR")} FCFA à ${row.providerName} maintenant ?`)) return;
+    action.current = row.orderId;
+    const currentScope = scopeRef.current;
     setBusyOrderId(row.orderId);
     setRowError(null);
     try {
       await api.post(`/admin/payouts/${row.orderId}/trigger`, {});
-      load();
+      if (mounted.current && scopeRef.current === currentScope) await load();
     } catch (err: unknown) {
       const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Erreur lors de l'envoi.";
-      setRowError({ orderId: row.orderId, message });
+      if (mounted.current && scopeRef.current === currentScope) setRowError({ orderId: row.orderId, message });
     } finally {
-      setBusyOrderId(null);
+      action.current = null;
+      if (mounted.current) setBusyOrderId(null);
     }
   }
 
@@ -147,6 +189,7 @@ export default function PayoutsPage() {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-5">
+        <button type="button" disabled={loading || busyOrderId !== null} onClick={() => void load()} className="px-4 py-1.5 rounded-full border text-[13px] font-semibold disabled:opacity-50">Actualiser</button>
         <button
           onClick={() => { setPage(1); setNeedsActionOnly(true); }}
           className={`px-4 py-1.5 rounded-full text-[13px] font-semibold transition-colors ${needsActionOnly ? "bg-[#1A5C2A] text-white" : "bg-white border border-[#E5E5E5] text-[#6B6B6B] hover:border-[#1A5C2A] hover:text-[#1A5C2A]"}`}
@@ -162,7 +205,7 @@ export default function PayoutsPage() {
       </div>
 
       <div className="bg-white rounded-xl border border-[#E5E5E5] overflow-hidden" style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-        <table className="w-full">
+        <div className="overflow-x-auto"><table className="w-full">
           <thead>
             <tr className="border-b border-[#E5E5E5] bg-[#F7F7F7]">
               <th className="text-left text-[13px] font-semibold text-[#1A1A1A] px-5 py-3">Commande</th>
@@ -179,7 +222,7 @@ export default function PayoutsPage() {
             {loading ? (
               <tr><td colSpan={8} className="px-5 py-10 text-center"><Loader2 size={20} className="animate-spin mx-auto text-[#6B6B6B]" /></td></tr>
             ) : error ? (
-              <tr><td colSpan={8} className="px-5 py-10 text-center text-[13px] text-[#6B6B6B]">Impossible de charger les versements.</td></tr>
+              <tr><td colSpan={8} className="px-5 py-10 text-center text-[13px] text-[#6B6B6B]">Impossible de charger les versements. <button type="button" onClick={() => void load()} className="ml-2 font-semibold text-[#1A5C2A] underline">Réessayer</button></td></tr>
             ) : rows.length === 0 ? (
               <tr><td colSpan={8} className="px-5 py-10 text-center text-[13px] text-[#6B6B6B]">Aucune commande à afficher.</td></tr>
             ) : (
@@ -212,7 +255,7 @@ export default function PayoutsPage() {
                         {row.payout.canConfirmManual && (
                           <button
                             onClick={() => openManualForm(row)}
-                            disabled={busyOrderId === row.orderId}
+                            disabled={busyOrderId !== null}
                             title="Confirmer un paiement déjà fait en dehors du système"
                             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold border border-[#E5E5E5] text-[#1A5C2A] hover:border-[#1A5C2A] transition-colors disabled:opacity-50"
                           >
@@ -222,7 +265,7 @@ export default function PayoutsPage() {
                         {row.payout.canTrigger && row.providerConfigured && (
                           <button
                             onClick={() => triggerPayout(row)}
-                            disabled={busyOrderId === row.orderId}
+                            disabled={busyOrderId !== null}
                             title="Envoyer réellement le versement via FeexPay"
                             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold bg-[#1A5C2A] text-white hover:bg-[#0F3D1A] transition-colors disabled:opacity-50"
                           >
@@ -241,6 +284,7 @@ export default function PayoutsPage() {
                               Montant réellement versé (FCFA)
                             </label>
                             <input
+                              min="1" step="1" required
                               type="number"
                               value={manualAmount}
                               onChange={(e) => setManualAmount(e.target.value)}
@@ -249,13 +293,14 @@ export default function PayoutsPage() {
                           </div>
                           <button
                             onClick={() => confirmManual(row.orderId)}
-                            disabled={busyOrderId === row.orderId}
+                            disabled={busyOrderId !== null}
                             className="flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#1A5C2A] text-white text-[13px] font-semibold hover:bg-[#0F3D1A] transition-colors disabled:opacity-60"
                           >
                             {busyOrderId === row.orderId ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                             Confirmer le paiement manuel
                           </button>
                           <button
+                            disabled={busyOrderId !== null}
                             onClick={() => setActionOrderId(null)}
                             className="h-9 px-3 rounded-lg text-[13px] font-medium text-[#6B6B6B] hover:text-[#1A1A1A]"
                           >
@@ -276,7 +321,7 @@ export default function PayoutsPage() {
               ))
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       {totalPages > 1 && (
