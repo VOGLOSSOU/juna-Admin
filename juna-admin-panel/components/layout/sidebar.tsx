@@ -11,6 +11,7 @@ import {
   Users,
   ClipboardList,
   Star,
+  Wallet,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
@@ -22,7 +23,7 @@ interface NavItem {
   label: string;
   href?: string;
   icon: React.ReactNode;
-  badgeKey?: "orders" | "reviews";
+  badgeKey?: "orders" | "reviews" | "payouts";
   children?: { label: string; href: string }[];
 }
 
@@ -49,19 +50,22 @@ const navItems: NavItem[] = [
   { label: "Utilisateurs", href: "/users", icon: <Users size={18} /> },
   { label: "Commandes", href: "/orders", icon: <ClipboardList size={18} />, badgeKey: "orders" },
   { label: "Avis", href: "/reviews", icon: <Star size={18} />, badgeKey: "reviews" },
+  { label: "Versements", href: "/payouts", icon: <Wallet size={18} />, badgeKey: "payouts" },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
   const [openGroups, setOpenGroups] = useState<string[]>(["Géographie", "Fournisseurs"]);
-  const [badges, setBadges] = useState<Record<string, number>>({ orders: 0, reviews: 0 });
+  const [badges, setBadges] = useState<Record<string, number>>({ orders: 0, reviews: 0, payouts: 0 });
 
   useEffect(() => {
     Promise.allSettled([
       api.get("/orders/pending/count"),
       api.get("/reviews/pending/count"),
-    ]).then(([ordersRes, reviewsRes]) => {
+      api.get("/admin/payouts", { params: { needsAction: true, limit: 1 } }),
+    ]).then(([ordersRes, reviewsRes, payoutsRes]) => {
       setBadges({
+        payouts: payoutsRes.status === "fulfilled" ? (payoutsRes.value.data.data?.total ?? 0) : 0,
         orders: ordersRes.status === "fulfilled" ? (ordersRes.value.data.data?.pendingCount ?? 0) : 0,
         reviews: reviewsRes.status === "fulfilled" ? (reviewsRes.value.data.data?.pendingCount ?? 0) : 0,
       });
