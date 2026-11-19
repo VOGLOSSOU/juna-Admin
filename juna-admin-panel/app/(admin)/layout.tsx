@@ -3,11 +3,13 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { useSidebar } from "@/contexts/sidebar-context";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { admin, loading } = useAuth();
+  const { collapsed } = useSidebar();
   const router = useRouter();
 
   useEffect(() => {
@@ -28,7 +30,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="min-h-screen bg-[#F7F7F7]">
       <Sidebar />
       <Header />
-      <main className="ml-64 pt-16 min-h-screen">
+      <main className={`pt-16 min-h-screen transition-[margin] duration-200 ${collapsed ? "ml-16" : "ml-64"}`}>
         <div className="p-6">{children}</div>
       </main>
     </div>

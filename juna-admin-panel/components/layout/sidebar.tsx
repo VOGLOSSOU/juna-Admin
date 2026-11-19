@@ -14,10 +14,13 @@ import {
   Wallet,
   ChevronDown,
   ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
+import { useSidebar } from "@/contexts/sidebar-context";
 
 interface NavItem {
   label: string;
@@ -55,6 +58,7 @@ const navItems: NavItem[] = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { collapsed, toggle } = useSidebar();
   const [openGroups, setOpenGroups] = useState<string[]>(["Géographie", "Fournisseurs"]);
   const [badges, setBadges] = useState<Record<string, number>>({ orders: 0, reviews: 0, payouts: 0 });
 
@@ -81,10 +85,15 @@ export default function Sidebar() {
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
 
   return (
-    <aside className="w-64 h-screen flex flex-col bg-[#0F3D1A] fixed left-0 top-0 z-30">
-      {/* Logo */}
-      <div className="h-16 flex items-center px-5 border-b border-white/10">
-        <div className="bg-white rounded-lg p-1.5 inline-flex items-center justify-center">
+    <aside
+      className={cn(
+        "h-screen flex flex-col bg-[#0F3D1A] fixed left-0 top-0 z-30 transition-[width] duration-200 overflow-hidden",
+        collapsed ? "w-16" : "w-64"
+      )}
+    >
+      {/* Logo + bascule */}
+      <div className={cn("h-16 flex items-center border-b border-white/10", collapsed ? "justify-center px-2" : "justify-between px-5")}>
+        <div className="bg-white rounded-lg p-1.5 inline-flex items-center justify-center shrink-0">
           <Image
             src="/juna-logo.png"
             alt="JUNA"
@@ -94,7 +103,26 @@ export default function Sidebar() {
             priority
           />
         </div>
+        {!collapsed && (
+          <button
+            onClick={toggle}
+            title="Réduire le menu"
+            className="text-white/50 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/5"
+          >
+            <PanelLeftClose size={18} />
+          </button>
+        )}
       </div>
+
+      {collapsed && (
+        <button
+          onClick={toggle}
+          title="Agrandir le menu"
+          className="flex items-center justify-center text-white/50 hover:text-white transition-colors py-2 border-b border-white/10 hover:bg-white/5"
+        >
+          <PanelLeftOpen size={18} />
+        </button>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-3">
@@ -106,20 +134,26 @@ export default function Sidebar() {
             return (
               <div key={item.label} className="mb-1">
                 <button
-                  onClick={() => toggleGroup(item.label)}
+                  onClick={() => (collapsed ? toggle() : toggleGroup(item.label))}
+                  title={collapsed ? item.label : undefined}
                   className={cn(
                     "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[14px] font-semibold transition-colors",
+                    collapsed && "justify-center",
                     hasActiveChild
                       ? "text-white bg-[#1A5C2A]"
                       : "text-white/60 hover:text-white hover:bg-white/5"
                   )}
                 >
                   <span className="shrink-0">{item.icon}</span>
-                  <span className="flex-1 text-left">{item.label}</span>
-                  {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  {!collapsed && (
+                    <>
+                      <span className="flex-1 text-left">{item.label}</span>
+                      {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </>
+                  )}
                 </button>
 
-                {isOpen && (
+                {!collapsed && isOpen && (
                   <div className="mt-1 ml-4 pl-4 border-l border-white/10 space-y-0.5">
                     {item.children.map((child) => (
                       <Link
@@ -147,19 +181,30 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href!}
+              title={collapsed ? item.label : undefined}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-[14px] font-semibold transition-colors mb-1",
+                collapsed && "justify-center",
                 isActive(item.href!)
                   ? "text-white bg-[#1A5C2A]"
                   : "text-white/60 hover:text-white hover:bg-white/5"
               )}
             >
-              <span className="shrink-0">{item.icon}</span>
-              <span className="flex-1">{item.label}</span>
-              {badgeCount > 0 && (
-                <span className="bg-[#F4521E] text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
-                  {badgeCount}
-                </span>
+              <span className="shrink-0 relative">
+                {item.icon}
+                {collapsed && badgeCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-[#F4521E] w-2 h-2 rounded-full" />
+                )}
+              </span>
+              {!collapsed && (
+                <>
+                  <span className="flex-1">{item.label}</span>
+                  {badgeCount > 0 && (
+                    <span className="bg-[#F4521E] text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
+                      {badgeCount}
+                    </span>
+                  )}
+                </>
               )}
             </Link>
           );

@@ -54,9 +54,16 @@ const MODE_LABELS: Record<string, string> = {
 
 const LIMIT = 20;
 
-function formatDate(date: string | null): string {
-  if (!date) return "—";
+// "—" donnerait l'impression d'une donnée manquante par erreur : ces deux cas
+// sont attendus pour une commande antérieure à la mise en place du suivi.
+function formatActivatedAt(date: string | null): string {
+  if (!date) return "Avant suivi";
   return new Date(date).toLocaleDateString("fr-FR");
+}
+
+function formatMode(mode: string | null): string {
+  if (!mode) return "Aucun";
+  return MODE_LABELS[mode] ?? mode;
 }
 
 export default function PayoutsPage() {
@@ -197,9 +204,9 @@ export default function PayoutsPage() {
                       <p className="text-[11px] text-[#6B6B6B] mt-1 max-w-[220px]">{row.payout.label}</p>
                     </td>
                     <td className="px-5 py-3.5 text-[12px] text-[#6B6B6B]">
-                      {row.payout.mode ? MODE_LABELS[row.payout.mode] ?? row.payout.mode : "—"}
+                      {formatMode(row.payout.mode)}
                     </td>
-                    <td className="px-5 py-3.5 text-[13px] text-[#6B6B6B]">{formatDate(row.activatedAt)}</td>
+                    <td className="px-5 py-3.5 text-[13px] text-[#6B6B6B]">{formatActivatedAt(row.activatedAt)}</td>
                     <td className="px-5 py-3.5 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-2">
                         {row.payout.canConfirmManual && (

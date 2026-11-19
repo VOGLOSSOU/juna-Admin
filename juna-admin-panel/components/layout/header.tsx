@@ -2,13 +2,17 @@
 
 import Image from "next/image";
 import { useAuth } from "@/contexts/auth-context";
+import { useSidebar } from "@/contexts/sidebar-context";
 import { LogOut, User } from "lucide-react";
 
 export default function Header() {
   const { admin, logout } = useAuth();
+  const { collapsed } = useSidebar();
 
   return (
-    <header className="h-16 bg-white border-b border-[#E5E5E5] fixed top-0 left-64 right-0 z-20 flex items-center justify-between px-6 shadow-sm">
+    <header
+      className={`h-16 bg-white border-b border-[#E5E5E5] fixed top-0 right-0 z-20 flex items-center justify-between px-6 shadow-sm transition-[left] duration-200 ${collapsed ? "left-16" : "left-64"}`}
+    >
       <Image
         src="/juna-logo.png"
         alt="JUNA"
